@@ -110,6 +110,16 @@ label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 15px
 .g2 { background: var(--hard) !important; border-color: var(--hard) !important; color: #1b1300 !important; }
 .g3 { background: var(--good) !important; border-color: var(--good) !important; }
 .g4 { background: var(--easy) !important; border-color: var(--easy) !important; }
+.grades .btn.dim { opacity: .55; }
+#accept { position: sticky; bottom: calc(var(--bottom) + 8px); z-index: 5; box-shadow: 0 6px 20px rgba(0, 0, 0, .45); }
+.verdict { border-width: 2px; }
+.verdict .vhead { font-size: 18px; margin-bottom: 4px; }
+.verdict .vtext { margin-top: 6px; white-space: pre-wrap; }
+.v-correct { border-color: var(--good); }
+.v-partial { border-color: var(--hard); }
+.v-wrong { border-color: var(--again); }
+.v-dont_know { border-color: var(--easy); }
+.btn.primary small { font-weight: 400; font-size: 14px; }
 .progressbar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin: 4px 0 12px; }
 .progressbar i { display: block; height: 100%; background: var(--accent); }
 .bar { height: 10px; background: var(--bg3); border-radius: 5px; overflow: hidden; margin-top: 6px; }

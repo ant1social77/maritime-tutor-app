@@ -233,11 +233,16 @@ export function mergeState(baseState, journal, pendingRecs) {
   return { state: { ...baseState, cards }, fresh: fresh.map((r) => recomputed.get(r)) };
 }
 
+// Необязательные поля приложения (Python их игнорирует): check — кто оценил (ai/auto/self),
+// answer/feedback — ответ ученика и разбор, только для ошибок (для «мои ошибки» в Claude).
+const EXTRA = ['check', 'answer', 'feedback'];
 function makeRec(r, info) {
-  return {
+  const rec = {
     ts: r.ts, date: recDate(r), card: r.card, grade: r.grade, mode: r.mode,
     elapsed_days: info.elapsed_days ?? null, r: info.r ?? null, s_before: info.s_before ?? null, s_after: info.s_after ?? null,
   };
+  for (const k of EXTRA) if (r[k] != null && r[k] !== '') rec[k] = r[k];
+  return rec;
 }
 
 // ---------- ответы ----------
@@ -249,10 +254,15 @@ export function preview(cardId) {
   return out;
 }
 
-export async function answer(cardId, grade, mode = 'app') {
+export async function answer(cardId, grade, mode = 'app', extra = {}) {
   const t = today();
   const { state, info } = fsrs.review(M.eff[cardId] || null, grade, t);
-  const rec = makeRec({ ts: nowIso(), date: t, card: cardId, grade, mode }, info);
+  const x = { check: extra.check };
+  if (grade <= 2) {
+    x.answer = (extra.answer || '').trim().slice(0, 400);
+    x.feedback = (extra.feedback || '').trim().slice(0, 400);
+  }
+  const rec = makeRec({ ts: nowIso(), date: t, card: cardId, grade, mode, ...x }, info);
   M.pending.reviews.push(rec);
   M.eff[cardId] = state;
   await savePending();

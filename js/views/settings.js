@@ -1,5 +1,6 @@
 import * as D from '../data.js';
 import { ghSource } from '../github.js';
+import * as AI from '../ai.js';
 import { setTitle, esc, toast } from '../ui.js';
 
 export default function settings(el) {
@@ -32,11 +33,56 @@ export default function settings(el) {
       Токен никому не пересылай. Потерял телефон — удали токен на github.com в том же разделе.</details>
     <button class="btn primary" id="ssave" style="margin-top:12px">Проверить и подключить</button>
     ${D.isDemo() ? '' : '<button class="btn ghost" id="soff" style="margin-top:10px">Отключить (вернуться в демо)</button>'}
+    <h3>🤖 Учитель (ИИ) — проверка ответов</h3>
+    <div class="card tight small" id="aistat">…</div>
+    <label for="ak">Ключ Claude API (хранится только на этом устройстве)</label>
+    <input type="password" id="ak" placeholder="sk-ant-…" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <label for="am">Модель</label>
+    <select id="am">${Object.entries(AI.MODELS).map(([id, m]) => `<option value="${id}">${esc(m.name)} · $${m.inp}/$${m.out} за 1 млн токенов</option>`).join('')}</select>
+    <label for="ac">Лимит трат в месяц, $ (на устройстве; дальше — проверка по словам)</label>
+    <input type="text" id="ac" inputmode="decimal">
+    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="ae" style="width:24px;height:24px"> Учитель включён</label>
+    <details class="card tight small"><summary><b>Как получить ключ API</b></summary>
+      <ol>
+        <li>console.anthropic.com → войти (тот же e-mail, что в Claude).</li>
+        <li><b>Billing</b> → пополнить баланс (например, $5). API оплачивается отдельно от подписки.</li>
+        <li><b>Limits</b> → поставить месячный лимит (например, $10) — больше не спишет.</li>
+        <li><b>API keys</b> → <b>Create key</b> → имя <code>repetitor</code> → скопировать (начинается с <code>sk-ant-</code>) → вставить сюда.</li>
+      </ol>
+      Без ключа работает бесплатная проверка по ключевым словам (без понимания смысла).</details>
+    <button class="btn" id="asave" style="margin-top:10px">Сохранить настройки учителя</button>
+
     <h3>Устройство</h3>
     <button class="btn ghost" id="sreset">Перекачать данные с GitHub</button>
     <p class="muted small">Очищает только кэш файлов на этом устройстве. Очередь неотправленных ответов сохраняется.</p>
     <p class="muted small" id="spers"></p>`;
 
+  (async () => {
+    const a = await AI.getAI();
+    const sp = await AI.spent();
+    el.querySelector('#ak').value = a.key || '';
+    el.querySelector('#am').value = a.model;
+    el.querySelector('#ac').value = String(a.cap);
+    el.querySelector('#ae').checked = a.enabled;
+    el.querySelector('#aistat').innerHTML = a.key
+      ? `${a.enabled ? '✅ Учитель подключён' : '⏸ Учитель выключен'} · ${esc(AI.MODELS[a.model]?.name || a.model)}<br>Потрачено в этом месяце ≈ $${sp.toFixed(3)} из $${a.cap}`
+      : '🔎 Сейчас: бесплатная проверка по ключевым словам. Добавь ключ API — ответы будет проверять учитель Claude.';
+  })();
+  el.querySelector('#asave').addEventListener('click', async (e) => {
+    const key = el.querySelector('#ak').value.trim();
+    const cap = parseFloat(el.querySelector('#ac').value.replace(',', '.'));
+    if (key && !/^sk-ant-/.test(key)) { toast('Ключ должен начинаться с sk-ant-'); return; }
+    const prev = await AI.getAI();
+    await AI.saveAI({ ...prev, key, model: el.querySelector('#am').value, cap: Number.isFinite(cap) && cap >= 0 ? cap : 5, enabled: el.querySelector('#ae').checked });
+    if (key && navigator.onLine) {
+      e.target.disabled = true; e.target.textContent = 'Проверяю ключ…';
+      try {
+        await AI.aiCheck({ q: 'Что такое UKC?', a: 'Under Keel Clearance — запас воды под килем.', type: 'definition', bloom: 1, source: 'general' }, 'запас воды под килем');
+        toast('✓ Учитель на связи');
+      } catch (err) { toast('⚠️ ' + err.message, 4000); }
+    } else toast('Сохранено');
+    settings(el);
+  });
   navigator.storage?.persisted?.().then((ok) => { el.querySelector('#spers').textContent = ok ? '💾 Хранилище защищено от автоочистки.' : 'ℹ️ Установи приложение на экран Домой — так iPhone не будет чистить данные.'; });
   el.querySelector('#snow')?.addEventListener('click', async () => { await D.sync(); toast(D.M.syncError ? '⚠️ ' + D.M.syncError : '✓ Синхронизировано'); settings(el); });
   el.querySelector('#ssave').addEventListener('click', async (e) => {

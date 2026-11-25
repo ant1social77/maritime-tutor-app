@@ -1,10 +1,10 @@
 // Service worker: оболочка приложения работает офлайн. Данные репо — в IndexedDB (не здесь).
 // При выпуске новой версии увеличь VERSION — старый кэш удалится.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'mt-shell-' + VERSION;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/data.js', 'js/db.js', 'js/fsrs.js', 'js/github.js', 'js/md.js', 'js/ui.js',
+  'js/app.js', 'js/ai.js', 'js/data.js', 'js/db.js', 'js/fsrs.js', 'js/github.js', 'js/md.js', 'js/ui.js',
   'js/views/home.js', 'js/views/review.js', 'js/views/library.js', 'js/views/glossary.js',
   'js/views/progress.js', 'js/views/exam.js', 'js/views/upload.js', 'js/views/more.js', 'js/views/settings.js',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
