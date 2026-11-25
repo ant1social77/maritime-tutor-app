@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "course": "demo",
+  "lecture": "2026-11-01_demo-ecdis",
+  "title": "Демо: ECDIS, safety contour, UKC",
+  "concepts": [
+    { "id": "demo-ecdis", "title": "ECDIS — что это и когда заменяет бумажные карты", "topic": "ECDIS" },
+    { "id": "demo-safety-contour", "title": "Safety contour — безопасная изобата", "topic": "ECDIS settings" },
+    { "id": "demo-ukc", "title": "UKC — запас воды под килем", "topic": "Passage planning" }
+  ],
+  "cards": [
+    {
+      "id": "demo-ecdis-001", "concept": "demo-ecdis", "type": "definition", "bloom": 1, "lang": "ru",
+      "q": "Как расшифровывается ECDIS?",
+      "a": "Electronic Chart Display and Information System — электронная картографическая навигационно-информационная система (ЭКНИС).",
+      "source": "general", "tags": ["ECDIS"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    },
+    {
+      "id": "demo-ecdis-002", "concept": "demo-ecdis", "type": "procedure", "bloom": 2, "lang": "ru",
+      "q": "При каких условиях ECDIS может заменить бумажные карты? (3 условия)",
+      "a": "1) ECDIS типа, одобренного по эксплуатационным требованиям IMO;\n2) используются официальные ENC, откорректированные на дату;\n3) есть надёжный резерв (back-up): вторая независимая ECDIS или комплект бумажных карт.\nПлюс экипаж обучен (общий курс + курс на конкретный тип). Требование — SOLAS гл. V, правило 19.",
+      "source": "general", "tags": ["ECDIS", "SOLAS"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    },
+    {
+      "id": "demo-ecdis-003", "concept": "demo-safety-contour", "type": "definition", "bloom": 2, "lang": "ru",
+      "q": "Ты задал safety contour, а такой изобаты в ENC нет. Что сделает ECDIS?",
+      "a": "Автоматически возьмёт следующую более глубокую изобату, которая есть в ENC, и выделит её как safety contour.",
+      "source": "general", "tags": ["ECDIS", "safety contour"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    },
+    {
+      "id": "demo-ecdis-004", "concept": "demo-safety-contour", "type": "situation", "bloom": 3, "lang": "ru",
+      "q": "Safety contour задан 12 м. В ENC есть изобаты 10 м и 20 м. Какая будет выделена и что это значит для мостика?",
+      "a": "20 м — следующая более глубокая. Безопасная зона на экране меньше, чем ты думал: районы 12–20 м покажутся «опасными». Нужно знать об этом при планировании и не отключать аларм, а проверить маршрут.",
+      "source": "general", "tags": ["ECDIS", "safety contour"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    },
+    {
+      "id": "demo-ukc-001", "concept": "demo-ukc", "type": "definition", "bloom": 1, "lang": "ru",
+      "q": "Что такое UKC?",
+      "a": "Under Keel Clearance — запас воды под килем: расстояние от самой низкой точки киля до грунта.",
+      "source": "general", "tags": ["UKC"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    },
+    {
+      "id": "demo-ukc-002", "concept": "demo-ukc", "type": "english", "bloom": 1, "lang": "en",
+      "q": "Pilot asks: \"What is your under keel clearance?\" What exactly is he asking about?",
+      "a": "The vertical distance between the lowest point of the ship's keel and the seabed (UKC). Answer with the figure, e.g. \"Our UKC is 2.5 metres.\"",
+      "source": "general", "tags": ["UKC", "SMCP"], "created": "2026-11-25", "status": "active", "origin": "manual"
+    }
+  ]
+}
