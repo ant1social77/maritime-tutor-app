@@ -1,4 +1,5 @@
 import * as D from '../data.js';
+import * as T from '../teacher.js';
 import { render, highlight } from '../md.js';
 import { setTitle, esc, pctBar, fmtDate, toast } from '../ui.js';
 
@@ -72,13 +73,14 @@ function lecture(el, courseId, stem) {
     </div>
     <div class="stack">
       ${x.cards.length ? `<a class="btn primary" href="#/review?lecture=${encodeURIComponent(stem)}">🔁 Повторить эту лекцию</a>` : ''}
+      ${x.lecturePath && !x.cards.length ? T.link('🎓 Разобрать эту лекцию с учителем', `разбери лекцию ${courseId}/${stem}`, { cls: 'btn primary' }) : ''}
       ${x.notePath ? `<a class="btn" href="#/doc?path=${encodeURIComponent(x.notePath)}">📝 Конспект</a>` : ''}
       ${x.fixedPath ? `<a class="btn" href="#/doc?path=${encodeURIComponent(x.fixedPath)}">📄 Исправленная расшифровка</a>` : ''}
       ${x.lecturePath ? `<a class="btn" href="#/doc?path=${encodeURIComponent(x.lecturePath)}">🎙 Исходная расшифровка${!cached && lsize ? ` · ${Math.ceil(lsize / 1024)} КБ` : ''}</a>` : ''}
     </div>
     ${concepts.length ? `<h3>Понятия</h3><ul class="list card tight">${concepts.map((c) => {
       const row = crow.get(c.id);
-      return `<li class="item"><span class="grow">${esc(c.title)}<div class="sub">уровень: ${BLOOM[row?.bloom || 0]}${row?.lapses ? ` · ошибок ${row.lapses}` : ''}</div></span></li>`;
+      return `<li class="item"><span class="grow">${esc(c.title)}<div class="sub">🗂 ${esc(D.topicTitle(courseId, c.topic || D.NO_TOPIC))} · уровень: ${BLOOM[row?.bloom || 0]}${row?.lapses ? ` · ошибок ${row.lapses}` : ''}</div></span></li>`;
     }).join('')}</ul>` : ''}`;
 }
 
@@ -118,7 +120,7 @@ async function doc(el, path, q) {
 function snippet(text, idx, len) {
   const lineStart = text.lastIndexOf('\n', idx) + 1;
   const before = text.slice(0, idx);
-  const tcs = before.match(/\[(\d{1,2}:\d{2}:\d{2})\]/g);
+  const tcs = before.match(/\[(\d{1,2}:\d{2}:\d{2})\]|\*(\d{1,2}:\d{2}(?::\d{2})?)\*/g); // [чч:мм:сс] или *мм:сс*
   const tc = tcs ? tcs[tcs.length - 1].slice(1, -1) : null;
   const a = Math.max(lineStart, idx - 60);
   const s = (a > lineStart ? '…' : '') + text.slice(a, idx + len + 80).split('\n')[0];

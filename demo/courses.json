@@ -1,5 +1,9 @@
 {
   "demo": {
-    "title": "Демо — ECDIS и UKC (общие знания)"
+    "title": "Демо — ECDIS и UKC (общие знания)",
+    "topics": [
+      { "id": "ecdis", "title": "ECDIS" },
+      { "id": "passage-planning", "title": "Планирование перехода" }
+    ]
   }
 }

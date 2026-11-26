@@ -4,9 +4,9 @@
   "lecture": "2026-11-01_demo-ecdis",
   "title": "Демо: ECDIS, safety contour, UKC",
   "concepts": [
-    { "id": "demo-ecdis", "title": "ECDIS — что это и когда заменяет бумажные карты", "topic": "ECDIS" },
-    { "id": "demo-safety-contour", "title": "Safety contour — безопасная изобата", "topic": "ECDIS settings" },
-    { "id": "demo-ukc", "title": "UKC — запас воды под килем", "topic": "Passage planning" }
+    { "id": "demo-ecdis", "title": "ECDIS — что это и когда заменяет бумажные карты", "topic": "ecdis" },
+    { "id": "demo-safety-contour", "title": "Safety contour — безопасная изобата", "topic": "ecdis" },
+    { "id": "demo-ukc", "title": "UKC — запас воды под килем", "topic": "passage-planning" }
   ],
   "cards": [
     {

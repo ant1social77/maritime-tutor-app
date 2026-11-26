@@ -1,6 +1,8 @@
 import * as D from '../data.js';
 import { ghSource } from '../github.js';
 import * as AI from '../ai.js';
+import * as T from '../teacher.js';
+import { APP_VERSION, APP_DATE } from '../version.js';
 import { setTitle, esc, toast } from '../ui.js';
 
 export default function settings(el) {
@@ -12,7 +14,7 @@ export default function settings(el) {
       <b>${D.isDemo() ? '🧪 Сейчас: демо-режим' : `✅ Подключено: ${esc(s.owner)}/${esc(s.repo)}`}</b>
       ${D.isDemo() ? '' : `<div class="small muted" style="margin-top:6px">
         Синхронизировано: ${D.M.lastSync ? esc(D.M.lastSync.replace('T', ' ')) : 'ещё нет'}<br>
-        В очереди: ответов ${p.reviews.length}, занятий ${p.sessions.length}, файлов ${p.files.length}
+        В очереди: ответов ${p.reviews.length}, занятий ${p.sessions.length}, файлов ${p.files.length}, 📌 ${p.flags.length}
         ${D.M.syncError ? `<br><span style="color:#ffb4b4">⚠️ ${esc(D.M.syncError)}</span>` : ''}</div>
         <button class="btn" id="snow" style="margin-top:10px">⟳ Синхронизировать сейчас</button>`}
     </div>
@@ -33,7 +35,13 @@ export default function settings(el) {
       Токен никому не пересылай. Потерял телефон — удали токен на github.com в том же разделе.</details>
     <button class="btn primary" id="ssave" style="margin-top:12px">Проверить и подключить</button>
     ${D.isDemo() ? '' : '<button class="btn ghost" id="soff" style="margin-top:10px">Отключить (вернуться в демо)</button>'}
-    <h3>🤖 Учитель (ИИ) — проверка ответов</h3>
+    <h3>🎓 Кнопка «К учителю»</h3>
+    <label for="te">Среда Claude Code (environment) — необязательно</label>
+    <input type="text" id="te" value="${esc(T.settings().env || '')}" placeholder="имя или ID среды" autocapitalize="off" autocomplete="off">
+    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tc" style="width:24px;height:24px" ${T.settings().ctx ? 'checked' : ''}> Добавлять во фразу контекст (задания, 📌, ошибки сегодня)</label>
+    <button class="btn" id="tsave" style="margin-top:10px">Сохранить</button>
+
+    <h3>🤖 Проверка ответов через Claude API (платно, по желанию)</h3>
     <div class="card tight small" id="aistat">…</div>
     <label for="ak">Ключ Claude API (хранится только на этом устройстве)</label>
     <input type="password" id="ak" placeholder="sk-ant-…" autocapitalize="off" autocomplete="off" spellcheck="false">
@@ -41,7 +49,7 @@ export default function settings(el) {
     <select id="am">${Object.entries(AI.MODELS).map(([id, m]) => `<option value="${id}">${esc(m.name)} · $${m.inp}/$${m.out} за 1 млн токенов</option>`).join('')}</select>
     <label for="ac">Лимит трат в месяц, $ (на устройстве; дальше — проверка по словам)</label>
     <input type="text" id="ac" inputmode="decimal">
-    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="ae" style="width:24px;height:24px"> Учитель включён</label>
+    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="ae" style="width:24px;height:24px"> Проверка через API включена</label>
     <details class="card tight small"><summary><b>Как получить ключ API</b></summary>
       <ol>
         <li>console.anthropic.com → войти (тот же e-mail, что в Claude).</li>
@@ -50,12 +58,17 @@ export default function settings(el) {
         <li><b>API keys</b> → <b>Create key</b> → имя <code>repetitor</code> → скопировать (начинается с <code>sk-ant-</code>) → вставить сюда.</li>
       </ol>
       Без ключа работает бесплатная проверка по ключевым словам (без понимания смысла).</details>
-    <button class="btn" id="asave" style="margin-top:10px">Сохранить настройки учителя</button>
+    <button class="btn" id="asave" style="margin-top:10px">Сохранить настройки проверки</button>
 
     <h3>Устройство</h3>
     <button class="btn ghost" id="sreset">Перекачать данные с GitHub</button>
     <p class="muted small">Очищает только кэш файлов на этом устройстве. Очередь неотправленных ответов сохраняется.</p>
-    <p class="muted small" id="spers"></p>`;
+    <p class="muted small" id="spers"></p>
+    <p class="muted small">Версия приложения ${APP_VERSION} · ${APP_DATE}. Новая версия приходит сама: открой приложение с интернетом — появится плашка «Обновить».</p>`;
+  el.querySelector('#tsave').addEventListener('click', async () => {
+    await T.saveSettings({ env: el.querySelector('#te').value.trim(), ctx: el.querySelector('#tc').checked });
+    toast('Сохранено');
+  });
 
   (async () => {
     const a = await AI.getAI();

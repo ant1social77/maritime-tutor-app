@@ -1,20 +1,22 @@
 // Service worker: оболочка приложения работает офлайн. Данные репо — в IndexedDB (не здесь).
-// При выпуске новой версии увеличь VERSION — старый кэш удалится.
-const VERSION = 'v2';
+// При выпуске новой версии увеличь VERSION (и APP_VERSION в js/version.js) — старый кэш удалится.
+const VERSION = 'v3';
 const CACHE = 'mt-shell-' + VERSION;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/ai.js', 'js/data.js', 'js/db.js', 'js/fsrs.js', 'js/github.js', 'js/md.js', 'js/ui.js',
+  'js/teacher.js', 'js/version.js',
   'js/views/home.js', 'js/views/review.js', 'js/views/library.js', 'js/views/glossary.js',
   'js/views/progress.js', 'js/views/exam.js', 'js/views/upload.js', 'js/views/more.js', 'js/views/settings.js',
+  'js/views/topics.js', 'js/views/teacher.js', 'js/views/voice.js',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'demo/files.json', 'demo/courses.json', 'demo/glossary.md',
   'demo/cards/demo/2026-11-01_demo-ecdis.json', 'demo/notes/demo/2026-11-01_demo-ecdis.md',
-  'demo/lectures/demo/2026-11-01_demo-ecdis.md',
+  'demo/lectures/demo/2026-11-01_demo-ecdis.md', 'demo/progress/homework.json',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => null)))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

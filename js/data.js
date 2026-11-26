@@ -72,7 +72,11 @@ function demoSource() {
 
 const EAGER = (p) => p === 'courses.json' || p === 'glossary.md'
   || /^cards\/(.+\/)?[^_/][^/]*\.json$/.test(p) || /^notes\/.+\.md$/.test(p)
-  || p === 'progress/card-state.json' || p === 'progress/reviews.jsonl' || p === 'progress/sessions.jsonl';
+  || p === 'progress/card-state.json' || p === 'progress/reviews.jsonl' || p === 'progress/sessions.jsonl'
+  || p === 'progress/homework.json' || p === 'progress/flags.jsonl' || p === 'progress/flags-done.json';
+
+export const NO_TOPIC = '_none';
+const emptyPending = () => ({ reviews: [], sessions: [], files: [], flags: [] });
 
 // Порядок файлов как sorted(Path) в Python (по частям пути).
 function pathCmp(a, b) {
@@ -88,8 +92,8 @@ export const M = {
   src: null, ns: 'demo', settings: null,
   head: null, entries: new Map(), text: new Map(),
   courses: {}, cardFiles: [], cardsAll: new Map(), cards: [], concepts: new Map(),
-  base: { state: { schema: 1, cards: {} }, journal: [], sessions: [] },
-  pending: { reviews: [], sessions: [], files: [] },
+  base: { state: { schema: 1, cards: {} }, journal: [], sessions: [], flags: [], flagsDone: new Set(), homework: { items: [] } },
+  pending: emptyPending(),
   eff: {}, lectures: new Map(),
   lastSync: null, syncError: null, syncing: false,
 };
@@ -115,7 +119,7 @@ export async function init() {
     const f = await db.get('files', key);
     if (f && typeof f.text === 'string') M.text.set(key.slice(M.ns.length + 1), f.text);
   }
-  M.pending = (await db.get('kv', k('pending'))) || { reviews: [], sessions: [], files: [] };
+  M.pending = { ...emptyPending(), ...((await db.get('kv', k('pending'))) || {}) };
   M.lastSync = (await db.get('kv', k('lastSync'))) || null;
   build();
   emit();
@@ -159,8 +163,12 @@ function build() {
     state: parseJson(t.get('progress/card-state.json'), { schema: 1, cards: {} }),
     journal: parseJsonl(t.get('progress/reviews.jsonl')),
     sessions: parseJsonl(t.get('progress/sessions.jsonl')),
+    flags: parseJsonl(t.get('progress/flags.jsonl')),
+    flagsDone: new Set(parseJson(t.get('progress/flags-done.json'), { done: [] }).done || []),
+    homework: parseJson(t.get('progress/homework.json'), { items: [] }),
   };
   if (!M.base.state.cards) M.base.state.cards = {};
+  if (!Array.isArray(M.base.homework.items)) M.base.homework.items = [];
   M.eff = mergeState(M.base.state, M.base.journal, M.pending.reviews).state.cards;
   buildLectures();
 }
@@ -292,7 +300,98 @@ export async function dropQueuedFile(path) {
   emit();
 }
 
-export const pendingCount = () => M.pending.reviews.length + M.pending.sessions.length + M.pending.files.length;
+export const pendingCount = () => M.pending.reviews.length + M.pending.sessions.length + M.pending.files.length + M.pending.flags.length;
+
+// ---------- темы ----------
+/** Тема карточки = concepts[].topic её понятия (id из courses.json → topics). */
+export function topicOf(c) { return M.concepts.get(c.concept)?.topic || NO_TOPIC; }
+
+export function topicTitle(course, id) {
+  if (id === NO_TOPIC) return 'Без темы';
+  return (M.courses[course]?.topics || []).find((t) => t.id === id)?.title || id;
+}
+
+/** Все темы: сначала из courses.json (в их порядке), затем встреченные в карточках. */
+export function topicList() {
+  const out = new Map();
+  for (const [course, info] of Object.entries(M.courses)) {
+    for (const t of info.topics || []) {
+      if ((t.status || 'active') !== 'active') continue;
+      out.set(`${course}/${t.id}`, { key: `${course}/${t.id}`, course, id: t.id, title: t.title || t.id, cards: [] });
+    }
+  }
+  for (const c of M.cards) {
+    const id = topicOf(c), key = `${c._course}/${id}`;
+    if (!out.has(key)) out.set(key, { key, course: c._course, id, title: topicTitle(c._course, id), cards: [] });
+    out.get(key).cards.push(c);
+  }
+  return [...out.values()];
+}
+
+export function topicStats(x) {
+  const t = today();
+  const base = lectureStats(x);
+  const weakSet = weakIds();
+  return {
+    ...base,
+    due: x.cards.filter((c) => M.eff[c.id] && M.eff[c.id].due <= t).length,
+    weak: x.cards.filter((c) => weakSet.has(c.id)).length,
+    fresh: x.cards.filter((c) => !M.eff[c.id]).length,
+  };
+}
+
+// ---------- журнал ответов целиком (репо + очередь) ----------
+const allReviews = () => M.base.journal.concat(M.pending.reviews);
+const goodAfter = (reviews, card, since) => reviews.some((r) => r.card === card && r.grade >= 3 && String(r.ts ?? '') > String(since || ''));
+
+// ---------- «📌 От учителя» (progress/homework.json, пишет учитель) ----------
+export function homeworkOpen() {
+  const rv = allReviews();
+  const ids = new Set(M.cards.map((c) => c.id));
+  return M.base.homework.items.filter((it) => !it.done && ids.has(it.card) && !goodAfter(rv, it.card, it.added));
+}
+export const homeworkUpdated = () => M.base.homework.updated || null;
+
+// ---------- «📌 Запомнить» (progress/flags.jsonl, пишет приложение) ----------
+const flagKey = (f) => `${f.ts}|${f.card}`;
+export function allFlags() {
+  const known = new Set(M.base.flags.map(flagKey));
+  return M.base.flags.concat(M.pending.flags.filter((f) => !known.has(flagKey(f))));
+}
+/** Флаги, которые учитель ещё не разобрал. */
+export const flagsOpen = () => allFlags().filter((f) => !M.base.flagsDone.has(flagKey(f)));
+/** Карточки с флагом, после которого ещё не было ответа ≥ Good — идут в «Слабое». */
+export function boosted() {
+  const rv = allReviews();
+  return new Set(allFlags().filter((f) => !goodAfter(rv, f.card, f.ts)).map((f) => f.card));
+}
+export const isFlagged = (cardId) => flagsOpen().some((f) => f.card === cardId);
+
+export async function flag(cardId, answer = '', note = '') {
+  M.pending.flags.push({ ts: nowIso(), date: today(), card: cardId, answer: (answer || '').trim().slice(0, 400), note: (note || '').trim().slice(0, 300), by: 'app' });
+  await savePending();
+  emit();
+}
+
+/** «📌» нажат до оценки этой же карточки: время флага — после ответа, иначе этот же ответ ≥ «Помню»
+ *  сразу снял бы «чаще в Слабом». Только для ещё не отправленного флага. */
+export async function restampFlag(cardId) {
+  const known = new Set(M.base.flags.map(flagKey));
+  const f = [...M.pending.flags].reverse().find((x) => x.card === cardId && !known.has(flagKey(x)));
+  if (!f) return;
+  f.ts = nowIso(); f.date = today();
+  await savePending();
+}
+
+function weakIds() {
+  const t = today(), b = boosted();
+  return new Set(M.cards.filter((c) => {
+    const st = M.eff[c.id];
+    if (!st) return false;
+    const r = fsrs.currentR(st, t);
+    return (st.lapses || 0) > 0 || (st.last_grade ?? 3) <= 2 || (r != null && r < 0.8) || b.has(c.id);
+  }).map((c) => c.id));
+}
 
 // ---------- выбор карточек (порт today.py) ----------
 function lectureDate(lecture) {
@@ -318,12 +417,13 @@ function shuffle(a) {
   return a;
 }
 
-/** opts: { mode: due|old|weak|exam, limit, newN, course, lecture, lang } */
+/** opts: { mode: due|old|weak|exam|all|homework|ids, limit, newN, course, lecture, topic, lang, ids } */
 export function select(opts = {}) {
-  const { mode = 'due', limit = 15, newN = 5, course, lecture, lang } = opts;
+  const { mode = 'due', limit = 15, newN = 5, course, lecture, topic, lang, ids } = opts;
   const t = today();
   const pool = M.cards.filter((c) => (!course || c._course === course)
-    && (!lecture || (c._lecture || '').includes(lecture)) && (!lang || (c.lang || 'ru') === lang))
+    && (!lecture || (c._lecture || '').includes(lecture)) && (!lang || (c.lang || 'ru') === lang)
+    && (!topic || topicOf(c) === topic))
     .map((c) => ({ c, st: M.eff[c.id] || null }));
   for (const x of pool) x.r = fsrs.currentR(x.st, t);
   const seen = pool.filter((x) => x.st), fresh = pool.filter((x) => !x.st);
@@ -337,12 +437,19 @@ export function select(opts = {}) {
     chosen = seen.filter((x) => (lectureDate(x.c._lecture) || t) <= edge).sort(byR);
     chosen = interleave(chosen.map((x) => x.c)).slice(0, limit);
   } else if (mode === 'weak') {
-    chosen = seen.filter((x) => (x.st.lapses || 0) > 0 || (x.st.last_grade ?? 3) <= 2 || (x.r != null && x.r < 0.8))
+    const b = boosted(); // «📌 Запомнить» — тоже в «Слабое»
+    chosen = seen.filter((x) => (x.st.lapses || 0) > 0 || (x.st.last_grade ?? 3) <= 2 || (x.r != null && x.r < 0.8) || b.has(x.c.id))
       .sort((a, b) => a.r - b.r || (b.st.lapses || 0) - (a.st.lapses || 0));
     chosen = interleave(chosen.map((x) => x.c)).slice(0, limit);
   } else if (mode === 'exam') {
     const all = shuffle(pool.map((x) => x.c)).sort((a, b) => (b.bloom || 1) - (a.bloom || 1));
     chosen = interleave(shuffle(all.slice(0, limit * 2))).slice(0, limit);
+  } else if (mode === 'all') { // «Вся тема подряд»: сначала самые забытые, затем новые
+    chosen = interleave(seen.sort(byR).concat(fresh).map((x) => x.c)).slice(0, limit);
+  } else if (mode === 'homework' || mode === 'ids') {
+    const want = mode === 'ids' ? ids || [] : homeworkOpen().map((it) => it.card);
+    const byId = new Map(pool.map((x) => [x.c.id, x.c]));
+    chosen = [...new Set(want)].filter((id) => byId.has(id)).map((id) => byId.get(id)).slice(0, limit);
   } else throw new Error('Неизвестный режим ' + mode);
   return {
     cards: chosen,
@@ -459,14 +566,25 @@ function commitMessage() {
     const ok = p.reviews.filter((r) => r.grade >= 3).length;
     parts.push(`повтор ${ok}/${p.reviews.length}`);
   }
+  if (p.flags.length) parts.push(`📌 учителю ${p.flags.length}`);
   if (p.files.length) parts.push('загружено: ' + p.files.map((f) => f.path.split('/').pop()).join(', '));
   if (!parts.length && p.sessions.length) parts.push('журнал занятий');
   const d = today().slice(8, 10) + '.' + today().slice(5, 7);
   return `Приложение ${d}: ${parts.join('; ')}`;
 }
 
-export async function sync() {
-  if (M.syncing) return;
+// Синхронизация уже идёт → вернуть её промис (не выходить сразу: «🎓 К учителю» ждёт, пока ответы уйдут).
+// Источник сменился (Настройки → другой репо) → новая синхронизация после текущей.
+let inflight = null, inflightSrc = null;
+export function sync() {
+  if (inflight && inflightSrc === M.src) return inflight;
+  const run = inflight ? inflight.then(() => doSync()) : doSync();
+  inflight = run; inflightSrc = M.src;
+  run.then(() => { if (inflight === run) inflight = null; });
+  return run;
+}
+
+async function doSync() {
   M.syncing = true; M.syncError = null; emit();
   try {
     if (!navigator.onLine) throw new Error('Нет интернета — ответы сохранены на устройстве');
@@ -474,7 +592,7 @@ export async function sync() {
       const res = await pull();
       build();
       if (M.src.kind === 'demo' || pendingCount() === 0) break;
-      const snapshot = { reviews: [...M.pending.reviews], sessions: [...M.pending.sessions], files: [...M.pending.files] };
+      const snapshot = { reviews: [...M.pending.reviews], sessions: [...M.pending.sessions], files: [...M.pending.files], flags: [...M.pending.flags] };
       const files = [];
       const message = commitMessage();
       if (snapshot.reviews.length) {
@@ -492,6 +610,13 @@ export async function sync() {
         st += snapshot.sessions.filter((s) => !known.has(s.ts)).map((s) => pyJson(s) + '\n').join('');
         files.push({ path: 'progress/sessions.jsonl', text: st });
       }
+      if (snapshot.flags.length) {
+        let ft = M.text.get('progress/flags.jsonl') || '';
+        if (ft && !ft.endsWith('\n')) ft += '\n';
+        const known = new Set(M.base.flags.map(flagKey));
+        const add = snapshot.flags.filter((f) => !known.has(flagKey(f)));
+        if (add.length) { ft += add.map((f) => pyJson(f) + '\n').join(''); files.push({ path: 'progress/flags.jsonl', text: ft }); }
+      }
       for (const f of [...snapshot.files]) {
         if (M.entries.has(f.path)) { // lectures/ не перезаписываем никогда
           f.error = 'В репо уже есть файл с таким именем — удали из очереди и загрузи под другим';
@@ -500,7 +625,10 @@ export async function sync() {
         }
         files.push({ path: f.path, text: f.text, b64: f.b64 });
       }
-      if (!files.length) { await savePending(); break; }
+      if (!files.length) {
+        M.pending.flags = M.pending.flags.filter((r) => !snapshot.flags.includes(r)); // уже были в репо
+        await savePending(); break;
+      }
       try {
         const out = await M.src.commit({ head: res.head, files, message });
         for (const f of files) {
@@ -510,6 +638,7 @@ export async function sync() {
         M.pending.reviews = M.pending.reviews.filter((r) => !snapshot.reviews.includes(r));
         M.pending.sessions = M.pending.sessions.filter((r) => !snapshot.sessions.includes(r));
         M.pending.files = M.pending.files.filter((r) => !snapshot.files.includes(r));
+        M.pending.flags = M.pending.flags.filter((r) => !snapshot.flags.includes(r));
         await savePending();
         const r2 = await pull(); // дерево после коммита (файлы уже в кэше — без скачивания)
         void r2;

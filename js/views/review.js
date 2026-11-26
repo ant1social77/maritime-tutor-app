@@ -1,5 +1,6 @@
 import * as D from '../data.js';
 import * as AI from '../ai.js';
+import * as T from '../teacher.js';
 import { setTitle, esc, cardChips, ivlText, toast } from '../ui.js';
 
 const MODES = {
@@ -7,6 +8,9 @@ const MODES = {
   five: { title: '5 минут', opts: { mode: 'due', limit: 5, newN: 0 } },
   old: { title: 'Старое', opts: { mode: 'old', limit: 15 } },
   weak: { title: 'Слабое', opts: { mode: 'weak', limit: 15 } },
+  all: { title: 'Вся тема', opts: { mode: 'all', limit: 100 } },
+  homework: { title: '📌 От учителя', opts: { mode: 'homework', limit: 50 } },
+  ids: { title: 'Повтор', opts: { mode: 'ids', limit: 50 } },
 };
 const GRADES = [
   [1, 'Не помню', 'Again'], [2, 'С трудом', 'Hard'], [3, 'Помню', 'Good'], [4, 'Легко', 'Easy'],
@@ -18,8 +22,15 @@ export default async function review(el, r) {
   const modeKey = MODES[r.q.mode] ? r.q.mode : 'due';
   const mode = MODES[modeKey];
   const lecture = r.q.lecture || null;
-  setTitle(lecture ? `Повтор · ${lecture}` : mode.title, !!(lecture || r.q.mode));
-  const sel = D.select({ ...mode.opts, lecture, ...(lecture ? { newN: 50, limit: 50 } : {}) });
+  const topic = r.q.topic || null, course = r.q.course || null;
+  const topicName = topic ? D.topicTitle(course, topic) : '';
+  setTitle(lecture ? `Повтор · ${lecture}` : topic ? `${mode.title} · ${topicName}` : mode.title, !!(lecture || topic || r.q.mode));
+  const sel = D.select({
+    ...mode.opts, lecture, topic, course, ids: (r.q.ids || '').split(',').filter(Boolean),
+    ...(lecture ? { newN: 50, limit: 50 } : topic && modeKey === 'due' ? { newN: 10 } : {}),
+  });
+  const flagged = new Set(), wrong = new Set();
+  let flaggedNow = null; // «📌» нажат на этой карточке до оценки
   const queue = sel.cards.map((c) => ({ c, retry: false }));
   const res = { 1: 0, 2: 0, 3: 0, 4: 0 };
   const retried = new Set();
@@ -30,7 +41,7 @@ export default async function review(el, r) {
 
   if (!queue.length) {
     el.innerHTML = `<div class="card center"><div class="big-emoji">✅</div>
-      <p><b>${modeKey === 'old' ? 'Старых карточек пока нет' : modeKey === 'weak' ? 'Слабых карточек нет' : 'На сегодня всё'}</b></p>
+      <p><b>${modeKey === 'old' ? 'Старых карточек пока нет' : modeKey === 'weak' ? 'Слабых карточек нет' : modeKey === 'homework' ? 'Задания учителя выполнены 👍' : 'На сегодня всё'}${topic ? ` · ${esc(topicName)}` : ''}</b></p>
       <p class="muted small">${D.M.cards.length ? '' : 'Карточек ещё нет — сначала «разбери лекцию» в Claude.'}</p></div>
       <div class="stack"><a class="btn" href="#/review?mode=old">🕰 Повторить старое</a>
       <a class="btn" href="#/review?mode=weak">🎯 Слабое</a><a class="btn ghost" href="#/home">На главную</a></div>`;
@@ -93,9 +104,34 @@ export default async function review(el, r) {
       <div class="grades">
         ${GRADES.map(([g, ru, en]) => `<button class="btn g${g}${sug && sug !== g ? ' dim' : ''}" data-g="${g}">${ru}<small>${en} · ${ivlText(pv[g])}</small></button>`).join('')}
       </div>
-      <div class="kbd-hint">${sug ? 'Enter — принять · ' : ''}1–4 — своя оценка</div>`;
+      <div class="kbd-hint">${sug ? 'Enter — принять · ' : ''}1–4 — своя оценка</div>
+      <div id="flagbox" style="margin-top:14px">${flagHtml(c)}</div>`;
     el.querySelector('#accept')?.addEventListener('click', () => grade(sug, verdict.source));
+    bindFlag(c);
     el.querySelectorAll('[data-g]').forEach((b) => b.addEventListener('click', () => grade(+b.dataset.g, 'self')));
+  }
+
+  // «📌 Запомнить»: карточка → учителю на разбор (flags.jsonl) и чаще в «Слабое», пока не ответишь ≥ «Помню».
+  function flagHtml(c) {
+    if (flagged.has(c.id) || D.isFlagged(c.id)) {
+      return `<div class="card tight small center">📌 Добавлено учителю — разберёте на занятии.<br>
+        ${T.link('🎓 Обсудить сейчас', `мои ошибки: ${c.id}`, { cls: 'btn small' })}</div>`;
+    }
+    return `<button class="btn ghost" id="flag">📌 Запомнить — разобрать с учителем</button>
+      <input type="text" id="flagnote" placeholder="Заметка учителю (необязательно)" style="margin-top:8px" hidden>`;
+  }
+  function bindFlag(c) {
+    const b = el.querySelector('#flag');
+    if (!b) return;
+    const note = el.querySelector('#flagnote');
+    b.addEventListener('click', async () => {
+      if (note.hidden) { note.hidden = false; b.textContent = '📌 Отправить учителю'; note.focus(); return; }
+      flaggedNow = c.id;
+      await D.flag(c.id, typed, note.value);
+      flagged.add(c.id);
+      el.querySelector('#flagbox').innerHTML = flagHtml(c);
+      toast('📌 Добавлено учителю');
+    });
   }
 
   let busy = false;
@@ -125,7 +161,9 @@ export default async function review(el, r) {
       check: source === 'self' && verdict ? `self(${verdict.source}:${verdict.grade})` : source || 'self',
       answer: typed, feedback: verdict ? [verdict.feedback, verdict.correction].filter(Boolean).join(' ') : '',
     });
-    if (retry) { retryN++; if (g >= 3) retryOk++; } else res[g]++;
+    if (flaggedNow === c.id) await D.restampFlag(c.id); // иначе эта же оценка ≥ «Помню» сняла бы «чаще в Слабом»
+    flaggedNow = null;
+    if (retry) { retryN++; if (g >= 3) retryOk++; } else { res[g]++; if (g <= 2) wrong.add(c.id); }
     if (g === 1 && !retry && !retried.has(c.id)) { retried.add(c.id); queue.push({ c, retry: true }); }
     i++; phase = 'q'; typed = ''; verdict = null;
     busy = false;
@@ -138,7 +176,8 @@ export default async function review(el, r) {
     const correct = res[3] + res[4];
     const minutes = Math.max(1, Math.round((Date.now() - started) / 60000));
     const lectures = [...new Set(queue.map((x) => x.c._lecture))];
-    await D.logSession({ minutes, reviewed, correct, lectures, notes: `Приложение: ${mode.title}${retryN ? `; переспрос ошибок ${retryOk}/${retryN}` : ''}` });
+    await D.logSession({ minutes, reviewed, correct, lectures, notes: `Приложение: ${mode.title}${topic ? ` · тема ${topic}` : ''}${retryN ? `; переспрос ошибок ${retryOk}/${retryN}` : ''}${flagged.size ? `; 📌 ${flagged.size}` : ''}` });
+    const wrongIds = [...new Set([...wrong, ...flagged])];
     const streak = D.streak();
     const rate = correct / Math.max(1, reviewed);
     el.innerHTML = `
@@ -147,11 +186,12 @@ export default async function review(el, r) {
         <h2>Готово!</h2>
         <p style="font-size:20px">✅ ${correct} · 🟡 ${res[2]} · ❌ ${res[1]} · серия ${streak} дн.</p>
         ${retryN ? `<p class="muted">Переспрос ошибок: ${retryOk} из ${retryN} вспомнил.</p>` : ''}
-        <p class="muted small">${minutes} мин. ${rate >= 0.8 ? 'Отличный темп — в следующий раз больше ситуаций и английского.' : rate < 0.5 ? 'Тяжело сегодня — разбери ошибки с учителем в Claude: «мои ошибки».' : ''}</p>
+        <p class="muted small">${minutes} мин. ${rate >= 0.8 ? 'Отличный темп — в следующий раз больше ситуаций и английского.' : rate < 0.5 ? 'Тяжело сегодня — разбери ошибки с учителем (кнопка ниже).' : ''}</p>
       </div>
       <div class="stack">
-        <a class="btn primary" href="#/home">На главную</a>
-        <a class="btn" href="#/review?mode=weak">🎯 Ещё слабое</a>
+        ${wrongIds.length ? T.link(`🎓 Разобрать ошибки с учителем · ${wrongIds.length}`, `мои ошибки: ${wrongIds.join(', ')}`, { cls: 'btn primary' }) : ''}
+        <a class="btn ${wrongIds.length ? '' : 'primary'}" href="#/home">На главную</a>
+        <a class="btn" href="#/review?mode=weak${topic ? `&topic=${encodeURIComponent(topic)}&course=${encodeURIComponent(course || '')}` : ''}">🎯 Ещё слабое${topic ? ' по теме' : ''}</a>
       </div>`;
     if (!D.isDemo() && navigator.onLine) {
       D.sync().then(() => toast(D.M.syncError ? '⚠️ ' + D.M.syncError : '✓ Ответы отправлены в репозиторий'));
@@ -163,6 +203,7 @@ export default async function review(el, r) {
   function onKey(e) {
     const touch = matchMedia('(hover: none)').matches;
     const enter = e.key === 'Enter' && !e.shiftKey;
+    if (e.target.tagName === 'INPUT') return; // заметка к «📌»
     if (e.target.tagName === 'TEXTAREA' && (touch || !enter)) return;
     if (phase === 'q' && enter) { e.preventDefault(); doCheck(false); }
     else if (phase === 'a' && enter && verdict?.grade) { e.preventDefault(); grade(verdict.grade, verdict.source); }

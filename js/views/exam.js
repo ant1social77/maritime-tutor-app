@@ -1,28 +1,36 @@
 import * as D from '../data.js';
+import * as T from '../teacher.js';
 import { setTitle, esc, cardChips, toast } from '../ui.js';
 
 const MARK = { 3: '✅', 2: '🟡', 1: '❌' };
 
-export default function exam(el) {
+export default function exam(el, r) {
   setTitle('📝 Экзамен', true);
   let items = [], i = 0, scope = '';
   let finished = false;
+  const pre = r?.q?.topic && r?.q?.course ? `${r.q.course}/${r.q.topic}` : '';
 
   function setup() {
     const courses = D.courseList().filter((c) => D.M.cards.some((x) => x._course === c.id));
+    const topics = D.topicList().filter((x) => x.cards.length);
     el.innerHTML = `
       <div class="card small">Как <code>today.py --mode exam</code>: случайные карточки, больше вопросов высокого уровня (B3–B4).
         Ответы не показываются до конца. В конце сам отметишь ✅/🟡/❌ — это пойдёт в повтор, а файл результата — в <code>exams/</code>.</div>
       <label for="ec">Курс</label>
       <select id="ec"><option value="">Все курсы</option>${courses.map((c) => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select>
+      <label for="et">Тема</label>
+      <select id="et"><option value="">Все темы</option>${topics.map((x) => `<option value="${esc(x.key)}" ${x.key === pre ? 'selected' : ''}>${esc(x.title)} · ${x.cards.length}</option>`).join('')}</select>
       <label for="en">Вопросов</label>
       <select id="en">${[10, 15, 20, 25].map((n) => `<option ${n === 15 ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <button class="btn primary" id="go" style="margin-top:16px">Начать экзамен</button>`;
     el.querySelector('#go').addEventListener('click', () => {
-      const course = el.querySelector('#ec').value || null;
+      let course = el.querySelector('#ec').value || null;
       const limit = +el.querySelector('#en').value;
-      scope = course ? (D.M.courses[course]?.title || course) : 'все курсы';
-      items = D.select({ mode: 'exam', limit, course }).cards.map((c) => ({ c, typed: '', mark: 0 }));
+      const tk = el.querySelector('#et').value;
+      const tp = tk ? topics.find((x) => x.key === tk) : null;
+      if (tp) course = tp.course;
+      scope = (course ? (D.M.courses[course]?.title || course) : 'все курсы') + (tp ? ` / тема: ${tp.title} (${tp.id})` : '');
+      items = D.select({ mode: 'exam', limit, course, topic: tp?.id }).cards.map((c) => ({ c, typed: '', mark: 0 }));
       if (!items.length) { toast('Нет карточек для экзамена'); return; }
       i = 0;
       ask();
@@ -97,7 +105,7 @@ export default function exam(el) {
         <h2>${score} из ${items.length} · ${pct}%</h2>
         <p class="muted small">${D.isDemo() ? 'Демо: файл результата не сохраняется.' : `Результат → <code>${esc(path)}</code> (отправится при синхронизации).`}</p></div>
       ${wrong.length ? `<h3>Ошибки и неточности · ${wrong.length}</h3>${wrong.map((it) => `<div class="card tight">${MARK[it.mark]} <b>${esc(it.c.q)}</b><div class="small" style="margin-top:4px">${esc(it.c.a)}</div></div>`).join('')}
-        <p class="muted small">Напиши в Claude «мои ошибки» — учитель разберёт и сделает карточки.</p>` : ''}
+        <div class="stack">${T.link('🎓 Разобрать ошибки с учителем', `мои ошибки: ${wrong.map((x) => x.c.id).join(', ')}`, { cls: 'btn primary', extra: `экзамен в приложении ${score}/${items.length}` })}</div>` : ''}
       <div class="stack"><a class="btn primary" href="#/home">На главную</a></div>`;
     if (!D.isDemo() && navigator.onLine) D.sync();
   }

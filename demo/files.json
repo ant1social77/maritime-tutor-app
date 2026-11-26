@@ -1,11 +1,12 @@
 {
-  "version": "1",
+  "version": "3",
   "note": "Демо-данные приложения (общие знания, не из лекций). Реальные данные — только из приватного репо.",
   "files": [
     "courses.json",
     "glossary.md",
     "cards/demo/2026-11-01_demo-ecdis.json",
     "notes/demo/2026-11-01_demo-ecdis.md",
-    "lectures/demo/2026-11-01_demo-ecdis.md"
+    "lectures/demo/2026-11-01_demo-ecdis.md",
+    "progress/homework.json"
   ]
 }
